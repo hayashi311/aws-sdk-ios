@@ -58,7 +58,7 @@ xcodebuild ARCHS="x86_64" \
 	-configuration Release \
     -project "${project_name}.xcodeproj" \
     -target "${project_name}" \
-    -sdk iphoneos \
+    -sdk macosx \
     SYMROOT=$(PWD)/builtFramework \
     clean build
 
