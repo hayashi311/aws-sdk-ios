@@ -17,6 +17,7 @@
 #import "AWSMobileAnalyticsMonetizationEventBuilder.h"
 #import "AWSMobileAnalyticsAppleMonetizationEventBuilder.h"
 #import "AWSMobileAnalyticsVirtualMonetizationEventBuilder.h"
+#import "AWSMockFileManager.h"
 
 @interface AITestEvent : NSObject<AWSMobileAnalyticsEvent>
 
@@ -119,6 +120,8 @@ static id mockEventClient;
 @implementation AIMonetizationEventBuilderTests
 
 -(void)setUp{
+     
+    
     id<AWSMobileAnalyticsEvent> testEvent = [[AITestEvent alloc] initWithName:@"_monetization.purchase"];
     mockEventClient = [OCMockObject mockForProtocol:@protocol(AWSMobileAnalyticsEventClient)];
     
@@ -256,9 +259,8 @@ static id mockEventClient;
     assertThat(monetizationEvent, is(nilValue())); //nil transaction id
 }
 
--(void) test_appleMonetizationEvent_manyLocaleCurrencyConversions
-{
-    AWSMobileAnalyticsAppleMonetizationEventBuilder* appleBuilder = [AWSMobileAnalyticsAppleMonetizationEventBuilder builderWithEventClient:mockEventClient];
+-(void) test_appleMonetizationEvent_manyLocaleCurrencyConversions {
+    AWSMobileAnalyticsAppleMonetizationEventBuilder* appleBuilder = nil;
     
     NSInteger quantity = 1;
     NSNumberFormatter *numberFormatter = [[NSNumberFormatter alloc] init];

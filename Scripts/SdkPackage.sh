@@ -30,7 +30,7 @@ FRAMEWORK_VERSION=A
 # Where we'll put the build framework.
 # The script presumes we're in the project root
 # directory. Xcode builds in "build" by default
-FRAMEWORK_BUILD_PATH="build/framework"
+FRAMEWORK_BUILD_PATH="builtFramework/framework"
 
 
 # Clean any existing framework that might be there
@@ -48,7 +48,7 @@ xcodebuild ARCHS="x86_64" \
     -project "${project_name}.xcodeproj" \
     -target "${project_name}" \
     -sdk macosx \
-    SYMROOT=$(PWD)/build \
+    SYMROOT=$(PWD)/builtFramework \
     clean build
 
 exitOnFailureCode $?
@@ -58,8 +58,8 @@ xcodebuild ARCHS="x86_64" \
 	-configuration Release \
     -project "${project_name}.xcodeproj" \
     -target "${project_name}" \
-    -sdk macosx \
-    SYMROOT=$(PWD)/build \
+    -sdk iphoneos \
+    SYMROOT=$(PWD)/builtFramework \
     clean build
 
 exitOnFailureCode $?
@@ -99,7 +99,7 @@ echo "Framework: Creating library..."
 #    "build/Debug-iphonesimulator/lib${project_name}.a" \
 #    "build/Release-iphoneos/lib${project_name}.a" \
 #    -o "$FRAMEWORK_DIR/Versions/Current/$FRAMEWORK_NAME"
-cp "build/Release/lib${FRAMEWORK_NAME}.a" "$FRAMEWORK_DIR/Versions/Current/$FRAMEWORK_NAME"
+cp "builtFramework/Release/lib${FRAMEWORK_NAME}.a" "$FRAMEWORK_DIR/Versions/Current/$FRAMEWORK_NAME"
 
 exitOnFailureCode $?
 
@@ -107,11 +107,11 @@ exitOnFailureCode $?
 # header files and service definition json files
 echo "Framework: Copying public headers into current version..."
 #those headers are declared in xcode's building phase: Headers
-cp -a build/Release/include/${project_name}/*.h $FRAMEWORK_DIR/Headers/
+cp -a builtFramework/Release/include/${project_name}/*.h $FRAMEWORK_DIR/Headers/
 exitOnFailureCode $?
 
 # copy service definition json files
 echo "Copying service definition files into current build directory..."
-mkdir -p 'build/service-definitions'
-find . -name "*.json" -not -path "./*Tests/*" -not -path './build/*' -exec cp {} 'build/service-definitions/' \;
+mkdir -p 'builtFramework/service-definitions'
+find . -name "*.json" -not -path "./*Tests/*" -not -path './builtFramework/*' -exec cp {} 'builtFramework/service-definitions/' \;
 exitOnFailureCode $?

@@ -1,5 +1,77 @@
 # AWSiOSSDKv2 CHANGELOG
 
+## 2.2.6
+
+### New Features
+* **Amazon DynamoDB**
+* 	* Added support for Expressions syntax in DynamoDB Object Mapper.
+* **Amazon S3**
+* 	*  Added support for Key Management Service (kms) in S3.
+
+### Resolved Issues
+* **Amazon S3**
+    * [S3] Fixed an issue that failed large file uploads while using customer-provided encryption keys.
+
+
+## 2.2.5
+
+### Resolved Issues
+* **Amazon S3 PresignedURL**
+* 	*  Fixed an issue in which `getPreSignedURL` may incorrectly returns credentials error under certain circumstance.
+* 	**Amazon S3 Transfer Utility**
+* 	* Fixed an issue in which `AWSS3TransferUtility` does not execute a completion handler when an expression is not provided.
+
+## 2.2.4
+
+### New Features
+* **Amazon S3 Transfer Utility**
+    * Added support for Amazon S3 Transfer Utility to simplify the data transfer between your iOS app and Amazon S3 in the background.
+* **Amazon DynamoDB Object Mapper**
+    * Added support for `ignoreAttributes` of the `AWSDynamoDBModeling` protocol. 
+
+### Resolved Issues
+* **Amazon API Gateway**
+    * Resolved a bug where an error object may not be serialized correctly.
+* **Amazon Mobile Analytics**
+    * Fixed an issue where the Amazon Mobile Analytics client overwrites the default configuration object and prevents other service clients from functioning properly.
+
+## 2.2.3
+
+### New Features
+* **SDK Core**
+    * Added AWS GovCloud (US) Region support.
+* **Amazon S3**
+    * Updated `AWSS3PreSignedURLBuilder` to use AWS Signature Version 4 for generating the pre-signed URLs.
+    * Updated `AWSS3PreSignedURLBuilder` to accept additional request parameters to be included in pre-signed URLs.
+* **Amazon DynamoDB Object Mapper**
+	* Added support for Secondary Index Scan.
+	
+### Resolved Issues
+* **Amazon S3**
+    * Fixed an issue where an empty directory cannot be created.
+
+## 2.2.2
+
+### New Features
+* **Amazon Mobile Analytics**
+	*  Updated the Amazon Mobile Analytics client APIs so that the developer needs to write fewer lines of code to initialize it.
+	*  Defaulted the SDK to send events over WAN.
+
+### Resolved Issues
+* **Amazon S3**
+    * Fixed the issue in `S3TransferManager` that local downloaded files may be accidentally removed when the server returns 304 response.
+    * Fixed the issue where the Amazon S3 client does not retry for the `SignatureDoesNotMatch` error.
+    * Fixed the issue where `putBucketVersioning` does not return any response under certain situations.
+
+## 2.2.1
+
+### New Features
+* **Amazon API Gateway** - Added a runtime library for the generated SDK of Amazon API Gateway. Amazon API Gateway makes it easy for AWS customers to publish, maintain, monitor, and secure application programming interfaces (APIs) at any scale.
+
+### Resolved Issues
+* **SDK Core** - Updated the CocoaPods podspec. Now the SDK is compatible with the `use_frameworks!` option.
+
+
 ## 2.2.0
 
 ### New Features

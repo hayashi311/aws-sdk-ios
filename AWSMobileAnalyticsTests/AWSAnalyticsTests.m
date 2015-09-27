@@ -20,11 +20,14 @@
 #import "AWSMobileAnalytics.h"
 #import "AWSTestUtility.h"
 
-#import "AWSMobileAnalyticsDeliveryClient.h"
-#import "AWSMobileAnalyticsConfigurationKeys.h"
+FOUNDATION_EXPORT double    const AWSValueForceSubmissionWaitTime;
+
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wundeclared-selector"
 
 @interface AWSAnalyticsTests : XCTestCase
 
+@property (strong,nonatomic) NSString *identityPoolId;
 @end
 
 @implementation AWSAnalyticsTests
@@ -34,8 +37,17 @@
     AWSLogDebug(@"sleeping for %f seconds before AWSAnalyticsTests starts.", AWSValueForceSubmissionWaitTime);
     [[NSRunLoop currentRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:AWSValueForceSubmissionWaitTime]];
 }
+
 - (void)setUp {
     [super setUp];
+    
+    NSString *filePath = [[NSBundle bundleForClass:[self class]] pathForResource:@"credentials"
+                                                                          ofType:@"json"];
+    NSDictionary *credentialsJson = [NSJSONSerialization JSONObjectWithData:[NSData dataWithContentsOfFile:filePath]
+                                                                    options:NSJSONReadingMutableContainers
+                                                                      error:nil];
+    
+    self.identityPoolId = credentialsJson[@"identityPoolId"];
     [AWSTestUtility setupCognitoCredentialsProvider];
 }
 
@@ -44,7 +56,66 @@
     [super tearDown];
 }
 
-
+- (void)testAtomicCopy {
+    
+    NSFileManager *fileManager = [NSFileManager defaultManager];
+    
+    NSURL* possibleCachesURL = [[fileManager URLsForDirectory:NSCachesDirectory inDomains:NSUserDomainMask] objectAtIndex:0];
+    XCTAssertNotNil(possibleCachesURL);
+    NSString *testCachesPath = [[possibleCachesURL path] stringByAppendingPathComponent:@"com.amazonaws.test"];
+    NSError *error = nil;
+    
+    
+    NSURL* possibleApplicationSupportURL = [[fileManager URLsForDirectory:NSApplicationSupportDirectory inDomains:NSUserDomainMask] objectAtIndex:0];
+    XCTAssertNotNil(possibleApplicationSupportURL);
+    NSString *testAppSupportPath = [[possibleApplicationSupportURL path] stringByAppendingPathComponent:@"com.amazonaws.test"];
+    error = nil;
+    
+    //clean up
+    [fileManager removeItemAtPath:testCachesPath error:nil];
+    [fileManager removeItemAtPath:testAppSupportPath error:nil];
+    
+    XCTAssertTrue([fileManager createDirectoryAtPath:testCachesPath withIntermediateDirectories:YES attributes:nil error:&error]);
+    XCTAssertTrue([fileManager createDirectoryAtPath:testAppSupportPath withIntermediateDirectories:YES attributes:nil error:&error]);
+    
+    NSString *uuid = [[NSUUID UUID] UUIDString];
+    NSDictionary *testDic = @{@"testID":uuid};
+    error = nil;
+    NSData *testData = [NSJSONSerialization dataWithJSONObject:testDic options:kNilOptions error:&error];
+    XCTAssertNotNil(testData);
+    XCTAssertNil(error);
+    
+    XCTAssertTrue([testData writeToFile:[testCachesPath stringByAppendingPathComponent:@"testFile"]  atomically:YES]);
+    
+    error = nil;
+    BOOL result = [fileManager aws_atomicallyCopyItemAtURL:[NSURL fileURLWithPath:testCachesPath]
+                                                     toURL:[NSURL fileURLWithPath:testAppSupportPath]
+                                            backupItemName:@"com.amazonaws.MobileAnalytics.backupItem"
+                                                     error:&error];
+    if ( NO == result) {
+        XCTFail(@"aws_atomicCopyItemAtURL failed. %@",error);
+    }
+    
+    XCTAssertTrue([fileManager fileExistsAtPath:[testCachesPath stringByAppendingPathComponent:@"testFile"]]);
+    XCTAssertTrue([fileManager fileExistsAtPath:[testAppSupportPath stringByAppendingPathComponent:@"testFile"]]);
+    
+    NSData *resultTestData = [NSData dataWithContentsOfFile:[testAppSupportPath stringByAppendingPathComponent:@"testFile"]];
+    XCTAssertNotNil(resultTestData);
+    XCTAssertEqualObjects(testData, resultTestData);
+    error = nil;
+    NSDictionary *resultTestDic = [NSJSONSerialization JSONObjectWithData:resultTestData options:kNilOptions error:&error];
+    XCTAssertNotNil(resultTestDic);
+    XCTAssertNil(error);
+    
+    NSString *resultUUID = resultTestDic[@"testID"];
+    XCTAssertEqualObjects(uuid, resultUUID);
+    
+    
+    //clean up
+    [fileManager removeItemAtPath:testCachesPath error:nil];
+    [fileManager removeItemAtPath:testAppSupportPath error:nil];
+    
+}
 
 - (void)test_clientID_persistence {
 #pragma clang diagnostic push
@@ -79,7 +150,7 @@
     
 
     //Brand new installation of an App integrated with this RC should put both event cache and client id pref in the “NSApplicationSupportDirectory”, NOT “NSCachesDirectory”.
-    XCTAssertNotNil([AWSMobileAnalytics mobileAnalyticsForAppId:testAppId]);
+    XCTAssertNotNil([AWSMobileAnalytics mobileAnalyticsForAppId:testAppId identityPoolId:self.identityPoolId]);
     [[NSRunLoop currentRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:1.0]];
     
     XCTAssertTrue([fileManager fileExistsAtPath:appIDAppSupportPath]);
@@ -126,7 +197,7 @@
      * NOT under “NSCachesDirectory” while client id exists under both “NSApplicationSupportDirectory” and “NSCachesDirectory”.
      */
     [[AWSMobileAnalytics class] performSelector:@selector(removeCachedInstances)];
-    XCTAssertNotNil([AWSMobileAnalytics mobileAnalyticsForAppId:testAppId]);
+    XCTAssertNotNil([AWSMobileAnalytics mobileAnalyticsForAppId:testAppId identityPoolId:self.identityPoolId]);
     [[NSRunLoop currentRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:1.0]];
     
     XCTAssertTrue([fileManager fileExistsAtPath:appIDAppSupportPath]);
@@ -148,7 +219,7 @@
     XCTAssertFalse([fileManager fileExistsAtPath:prefAppSupportPath]);
     
     [[AWSMobileAnalytics class] performSelector:@selector(removeCachedInstances)];
-    XCTAssertNotNil([AWSMobileAnalytics mobileAnalyticsForAppId:testAppId]);
+    XCTAssertNotNil([AWSMobileAnalytics mobileAnalyticsForAppId:testAppId identityPoolId:self.identityPoolId]);
     [[NSRunLoop currentRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:1.0]];
     XCTAssertEqualObjects(preferencesData, [NSData dataWithContentsOfFile:prefAppSupportPath]);
     
@@ -170,7 +241,7 @@
     
     XCTAssertTrue([bogusPreferencesData writeToFile:prefCachesPath atomically:YES]);
     [[AWSMobileAnalytics class] performSelector:@selector(removeCachedInstances)];
-    AWSMobileAnalytics* analyticsObj = [AWSMobileAnalytics mobileAnalyticsForAppId:testAppId];
+    AWSMobileAnalytics* analyticsObj = [AWSMobileAnalytics mobileAnalyticsForAppId:testAppId identityPoolId:self.identityPoolId];
     [[NSRunLoop currentRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:1.0]];
     XCTAssertNotNil(analyticsObj);
     NSString *analyticsUniqueId = [[analyticsObj valueForKey:@"mobileAnalyticsContext"] valueForKey:@"uniqueId"];
@@ -180,7 +251,7 @@
     /* Upgrade on top of the app integrated with this RC (pretending we have RC2 goes out), make sure event cache and client id (including its contents) under “NSApplicationSupportDirectory” are persisted and client id under “NSCachesDirectory” is also persisted.
      */
     [[AWSMobileAnalytics class] performSelector:@selector(removeCachedInstances)];
-    [AWSMobileAnalytics mobileAnalyticsForAppId:testAppId];
+    [AWSMobileAnalytics mobileAnalyticsForAppId:testAppId identityPoolId:self.identityPoolId];
     [[NSRunLoop currentRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:1.0]];
     XCTAssertEqualObjects(preferencesData, [NSData dataWithContentsOfFile:prefAppSupportPath]);
     XCTAssertEqualObjects(bogusPreferencesData, [NSData dataWithContentsOfFile:prefCachesPath]);
@@ -195,7 +266,7 @@
     XCTAssert([[NSFileManager defaultManager] removeItemAtPath:mobileAnalyticsAppSupportPath error:&error]);
     
     [[AWSMobileAnalytics class] performSelector:@selector(removeCachedInstances)];
-    AWSMobileAnalytics* analyticsObj2 = [AWSMobileAnalytics mobileAnalyticsForAppId:testAppId];
+    AWSMobileAnalytics* analyticsObj2 = [AWSMobileAnalytics mobileAnalyticsForAppId:testAppId identityPoolId:self.identityPoolId];
     [[NSRunLoop currentRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:1.0]];
     XCTAssertNotNil(analyticsObj2);
     NSString *analyticsUniqueId2 = [[analyticsObj2 valueForKey:@"mobileAnalyticsContext"] valueForKey:@"uniqueId"];
@@ -209,12 +280,47 @@
 #pragma clang diagnostic pop
 }
 
-- (void)test_createMobileAnalyticsInstance {
+- (void)test_createMobileAnalyticsInstanceOldConstructor {
     AWSMobileAnalytics* insights = [AWSMobileAnalytics mobileAnalyticsForAppId:[NSString stringWithFormat:@"appId-%@",NSStringFromSelector(_cmd)]];
     XCTAssertNotNil([insights eventClient]);
 }
 
-- (void)test_createAndSubmitEvent{
+- (void)test_createMobileAnalyticsInstance {
+    AWSMobileAnalytics* insights = [AWSMobileAnalytics mobileAnalyticsForAppId:[NSString stringWithFormat:@"appId-%@",NSStringFromSelector(_cmd)] identityPoolId:self.identityPoolId];
+    XCTAssertNotNil([insights eventClient]);
+}
+
+- (void)test_createMobileAnalyticsInstanceOldConstructor_WithDifferentAppId {
+    AWSMobileAnalytics* insights1 = [AWSMobileAnalytics mobileAnalyticsForAppId:@"appId-1"];
+    AWSMobileAnalytics* insights2 = [AWSMobileAnalytics mobileAnalyticsForAppId:@"appId-2"];
+    XCTAssertNotEqual(insights1, insights2);
+}
+
+- (void)test_createMobileAnalyticsInstance_WithSameAppId_And_SameIdentityPool {
+    AWSMobileAnalytics* insights1 = [AWSMobileAnalytics mobileAnalyticsForAppId:[NSString stringWithFormat:@"appId-%@",NSStringFromSelector(_cmd)] identityPoolId:self.identityPoolId];
+    AWSMobileAnalytics* insights2 = [AWSMobileAnalytics mobileAnalyticsForAppId:[NSString stringWithFormat:@"appId-%@",NSStringFromSelector(_cmd)] identityPoolId:self.identityPoolId];
+    XCTAssertEqual(insights1, insights2);
+}
+
+- (void)test_createMobileAnalyticsInstance_WithSameAppId_And_DifferentIdentityPool {
+    AWSMobileAnalytics* insights1 = [AWSMobileAnalytics mobileAnalyticsForAppId:[NSString stringWithFormat:@"appId-%@",NSStringFromSelector(_cmd)] identityPoolId:@"bogusId-1"];
+    AWSMobileAnalytics* insights2 = [AWSMobileAnalytics mobileAnalyticsForAppId:[NSString stringWithFormat:@"appId-%@",NSStringFromSelector(_cmd)] identityPoolId:@"bogusId-2"];
+    XCTAssertEqual(insights1, insights2);
+}
+
+- (void)test_createMobileAnalyticsInstance_WithDifferentAppId_And_SameIdentityPool {
+    AWSMobileAnalytics* insights1 = [AWSMobileAnalytics mobileAnalyticsForAppId:@"appId-1" identityPoolId:self.identityPoolId];
+    AWSMobileAnalytics* insights2 = [AWSMobileAnalytics mobileAnalyticsForAppId:@"appId-2" identityPoolId:self.identityPoolId];
+    XCTAssertNotEqual(insights1, insights2);
+}
+
+- (void)test_createMobileAnalyticsInstance_WithOldConstructor_And_NewConstructor {
+    AWSMobileAnalytics* insights1 = [AWSMobileAnalytics mobileAnalyticsForAppId:[NSString stringWithFormat:@"appId-%@",NSStringFromSelector(_cmd)] identityPoolId:self.identityPoolId];
+    AWSMobileAnalytics* insights2 = [AWSMobileAnalytics mobileAnalyticsForAppId:[NSString stringWithFormat:@"appId-%@",NSStringFromSelector(_cmd)]];
+    XCTAssertEqual(insights1, insights2);
+}
+
+- (void)test_createAndSubmitEventOldConstructor {
     AWSMobileAnalytics* insights = [AWSMobileAnalytics mobileAnalyticsForAppId:[NSString stringWithFormat:@"appId-%@",NSStringFromSelector(_cmd)]];
     XCTAssertNotNil([insights eventClient]);
 
@@ -241,8 +347,96 @@
 
     [[NSRunLoop currentRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:5]];
 
-    id<AWSMobileAnalyticsDeliveryClient> deliveryClient = [insights valueForKey:@"deliveryClient"];
-    NSArray *batchedEvents = [deliveryClient batchedEvents];
+    id deliveryClient = [insights valueForKey:@"deliveryClient"];
+    NSArray *batchedEvents = [deliveryClient performSelector:@selector(batchedEvents) withObject:nil];
+    //batchedEvents should be empty if all events has been sent successfully.
+    XCTAssertEqual(0, [batchedEvents count], @"batchedEvents is not empty,events delivery may have failed!, batchedEvent:\n%@",batchedEvents);
+}
+
+- (void)test_createAndSubmitEventMixNewAndOldConstructor {
+    AWSMobileAnalytics* insightsNewConstructor = [AWSMobileAnalytics mobileAnalyticsForAppId:[NSString stringWithFormat:@"appId-%@",NSStringFromSelector(_cmd)] identityPoolId:self.identityPoolId];
+    AWSMobileAnalytics* insightsOldConstructor = [AWSMobileAnalytics mobileAnalyticsForAppId:[NSString stringWithFormat:@"appId-%@",NSStringFromSelector(_cmd)]];
+    XCTAssertNotNil([insightsNewConstructor eventClient]);
+    XCTAssertEqual(insightsNewConstructor, insightsOldConstructor);
+
+    // Record when the user completes level 1
+    // Get the event client from Insights instance.
+    id<AWSMobileAnalyticsEventClient>  eventClientNewConstructor = insightsNewConstructor.eventClient;
+    id<AWSMobileAnalyticsEventClient>  eventClientOldConstructor = insightsOldConstructor.eventClient;
+    XCTAssertEqual(eventClientNewConstructor, eventClientOldConstructor);
+
+    // Create a level completion event.
+    id<AWSMobileAnalyticsEvent>  level1Event = [eventClientNewConstructor createEventWithEventType:@"level1Complete"];
+
+    // add an attribute to know what weapon the user completed the level with
+    [level1Event addAttribute:@"sword" forKey:@"weaponUsed"];
+    // add a metric to know how many coins the user collected in the level
+    [level1Event addMetric:@105 forKey:@"coinsCollected"];
+
+    // add a metric to know how long it took the user to complete the level
+    [level1Event addMetric:@300 forKey:@"levelDuration"];
+
+    // Record the level completion event.
+    [eventClientNewConstructor recordEvent:level1Event];
+
+    //submit the event
+    [eventClientNewConstructor submitEvents];
+
+    [[NSRunLoop currentRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:5]];
+
+    id deliveryClient = [insightsNewConstructor valueForKey:@"deliveryClient"];
+    NSArray *batchedEvents = [deliveryClient performSelector:@selector(batchedEvents) withObject:nil];
+    //batchedEvents should be empty if all events has been sent successfully.
+    XCTAssertEqual(0, [batchedEvents count], @"batchedEvents is not empty,events delivery may have failed!, batchedEvent:\n%@",batchedEvents);
+
+    //call sumbitEvent again without waiting for ValueForceSubmissionWaitTime(default 60sec) will result submission request been ignored.
+    id<AWSMobileAnalyticsEvent>  level2Event = [eventClientOldConstructor createEventWithEventType:@"level2Complete"];
+    [level2Event addAttribute:@"apple" forKey:@"foodUsed"];
+    [eventClientOldConstructor recordEvent:level2Event];
+
+    //submit the event
+    [eventClientOldConstructor submitEvents];
+    [[NSRunLoop currentRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:5]];
+    XCTAssertNotEqual(0, [[[insightsOldConstructor valueForKey:@"deliveryClient"] performSelector:@selector(batchedEvents) withObject:nil] count], @"batchedEvents should not be empty");
+
+    //will for waitTime expired.
+    [[NSRunLoop currentRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:AWSValueForceSubmissionWaitTime+5]];
+
+    //submit it again, should be successful this time
+    [eventClientOldConstructor submitEvents];
+    [[NSRunLoop currentRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:5]];
+    XCTAssertEqual(0, [[[insightsOldConstructor valueForKey:@"deliveryClient"] performSelector:@selector(batchedEvents) withObject:nil] count], @"batchedEvents is not empty,events delivery may have failed! , batchedEvent:\n%@",batchedEvents);
+}
+
+- (void)test_createAndSubmitEvent{
+    AWSMobileAnalytics* insights = [AWSMobileAnalytics mobileAnalyticsForAppId:[NSString stringWithFormat:@"appId-%@",NSStringFromSelector(_cmd)] identityPoolId:self.identityPoolId];
+    XCTAssertNotNil([insights eventClient]);
+
+    // Record when the user completes level 1
+    // Get the event client from Insights instance.
+    id<AWSMobileAnalyticsEventClient>  eventClient = insights.eventClient;
+
+    // Create a level completion event.
+    id<AWSMobileAnalyticsEvent>  level1Event = [eventClient createEventWithEventType:@"level1Complete"];
+
+    // add an attribute to know what weapon the user completed the level with
+    [level1Event addAttribute:@"sword" forKey:@"weaponUsed"];
+    // add a metric to know how many coins the user collected in the level
+    [level1Event addMetric:@105 forKey:@"coinsCollected"];
+
+    // add a metric to know how long it took the user to complete the level
+    [level1Event addMetric:@300 forKey:@"levelDuration"];
+
+    // Record the level completion event.
+    [eventClient recordEvent:level1Event];
+
+    //submit the event
+    [eventClient submitEvents];
+
+    [[NSRunLoop currentRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:5]];
+
+    id deliveryClient = [insights valueForKey:@"deliveryClient"];
+    NSArray *batchedEvents = [deliveryClient performSelector:@selector(batchedEvents) withObject:nil];
     //batchedEvents should be empty if all events has been sent successfully.
     XCTAssertEqual(0, [batchedEvents count], @"batchedEvents is not empty,events delivery may have failed!, batchedEvent:\n%@",batchedEvents);
 
@@ -254,7 +448,7 @@
     //submit the event
     [eventClient submitEvents];
     [[NSRunLoop currentRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:5]];
-    XCTAssertNotEqual(0, [[[insights valueForKey:@"deliveryClient"] batchedEvents] count], @"batchedEvents should not be empty");
+    XCTAssertNotEqual(0, [[[insights valueForKey:@"deliveryClient"] performSelector:@selector(batchedEvents) withObject:nil] count], @"batchedEvents should not be empty");
 
     //will for waitTime expired.
     [[NSRunLoop currentRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:AWSValueForceSubmissionWaitTime+5]];
@@ -262,12 +456,12 @@
     //submit it again, should be successful this time
     [eventClient submitEvents];
     [[NSRunLoop currentRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:5]];
-    XCTAssertEqual(0, [[[insights valueForKey:@"deliveryClient"] batchedEvents] count], @"batchedEvents is not empty,events delivery may have failed! , batchedEvent:\n%@",batchedEvents);
+    XCTAssertEqual(0, [[[insights valueForKey:@"deliveryClient"] performSelector:@selector(batchedEvents) withObject:nil] count], @"batchedEvents is not empty,events delivery may have failed! , batchedEvent:\n%@",batchedEvents);
 }
 
 - (void)test_createAndSubmitMultipleEventsWithGlobalAttributes{
 
-    AWSMobileAnalytics* insights = [AWSMobileAnalytics mobileAnalyticsForAppId:[NSString stringWithFormat:@"appId-%@",NSStringFromSelector(_cmd)]];
+    AWSMobileAnalytics* insights = [AWSMobileAnalytics mobileAnalyticsForAppId:[NSString stringWithFormat:@"appId-%@",NSStringFromSelector(_cmd)] identityPoolId:self.identityPoolId];
     XCTAssertNotNil([insights eventClient]);
 
     // Get the event client from Insights instance.
@@ -299,7 +493,7 @@
 
     //validate if global attributes are there
     [[NSRunLoop currentRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:5]];
-    NSArray *batchedEvents = [[insights valueForKey:@"deliveryClient"] batchedEvents];
+    NSArray *batchedEvents = [[insights valueForKey:@"deliveryClient"] performSelector:@selector(batchedEvents) withObject:nil];
     for (NSString *jsonStr in batchedEvents) {
         NSDictionary *aEventDic = [NSJSONSerialization JSONObjectWithData:[jsonStr dataUsingEncoding:NSUTF8StringEncoding] options:0 error:nil];
         if (![aEventDic[@"event_type"] isEqualToString:@"_session.start"] &&
@@ -322,12 +516,12 @@
     //manually submit those events
     [eventClient submitEvents];
     [[NSRunLoop currentRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:5]];
-    XCTAssertEqual(0, [[[insights valueForKey:@"deliveryClient"] batchedEvents] count], @"batchedEvents is not empty,events delivery may have failed!");
+    XCTAssertEqual(0, [[[insights valueForKey:@"deliveryClient"] performSelector:@selector(batchedEvents) withObject:nil] count], @"batchedEvents is not empty,events delivery may have failed!");
 }
 
 - (void)test_createAndSubmitMonetizationEvent {
 
-    AWSMobileAnalytics* insights = [AWSMobileAnalytics mobileAnalyticsForAppId:[NSString stringWithFormat:@"appId-%@",NSStringFromSelector(_cmd)]];
+    AWSMobileAnalytics* insights = [AWSMobileAnalytics mobileAnalyticsForAppId:[NSString stringWithFormat:@"appId-%@",NSStringFromSelector(_cmd)] identityPoolId:self.identityPoolId];
     XCTAssertNotNil([insights eventClient]);
 
     // get the event client for the builder
@@ -360,8 +554,8 @@
 
     [[NSRunLoop currentRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:5]];
 
-    id<AWSMobileAnalyticsDeliveryClient> deliveryClient = [insights valueForKey:@"deliveryClient"];
-    NSArray *batchedEvents = [deliveryClient batchedEvents];
+    id deliveryClient = [insights valueForKey:@"deliveryClient"];
+    NSArray *batchedEvents = [deliveryClient performSelector:@selector(batchedEvents) withObject:nil];
     //batchedEvents should be empty if all events has been sent successfully.
     XCTAssertEqual(0, [batchedEvents count], @"batchedEvents is not empty,events delivery may have failed!");
 
@@ -405,8 +599,8 @@
     [eventClient submitEvents];
 
     [[NSRunLoop currentRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:5]];
-    id<AWSMobileAnalyticsDeliveryClient> deliveryClient = [insights valueForKey:@"deliveryClient"];
-    NSArray *batchedEvents = [deliveryClient batchedEvents];
+    id deliveryClient = [insights valueForKey:@"deliveryClient"];
+    NSArray *batchedEvents = [deliveryClient performSelector:@selector(batchedEvents) withObject:nil];
     //batchedEvents should be empty if all events has been sent successfully.
     XCTAssertEqual(0, [batchedEvents count], @"batchedEvents is not empty,events delivery may have failed!");
 
@@ -445,18 +639,18 @@
     [eventClient submitEvents];
 
     [[NSRunLoop currentRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:5]];
-    id<AWSMobileAnalyticsDeliveryClient> deliveryClient = [insights valueForKey:@"deliveryClient"];
-    NSArray *batchedEvents = [deliveryClient batchedEvents];
+    id deliveryClient = [insights valueForKey:@"deliveryClient"];
+    NSArray *batchedEvents = [deliveryClient performSelector:@selector(batchedEvents) withObject:nil];
     //batchedEvents should be empty if all events has been sent successfully.
     XCTAssertEqual(0, [batchedEvents count], @"batchedEvents is not empty,events delivery may have failed!");
 }
 
-- (void)test_createAndSUmbitEventsWithDifferentAppId {
+- (void)test_createAndSubmitEventsWithDifferentAppId {
 
     NSMutableArray *insightsObjectsArray = [NSMutableArray new];
     for (int32_t i=0; i<10; i++) {
         NSString *appIdStr = [NSString stringWithFormat:@"testAppId%d",i];
-        AWSMobileAnalytics* insights = [AWSMobileAnalytics mobileAnalyticsForAppId:appIdStr];
+        AWSMobileAnalytics* insights = [AWSMobileAnalytics mobileAnalyticsForAppId:appIdStr identityPoolId:self.identityPoolId];
         XCTAssertNotNil([insights eventClient]);
         [insights.eventClient submitEvents];
         [insightsObjectsArray addObject:insights];
@@ -465,12 +659,12 @@
     [[NSRunLoop currentRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:10]];
 
     for (AWSMobileAnalytics *insights in insightsObjectsArray) {
-        id<AWSMobileAnalyticsDeliveryClient> deliveryClient = [insights valueForKey:@"deliveryClient"];
-        NSArray *batchedEvents = [deliveryClient batchedEvents];
+        id deliveryClient = [insights valueForKey:@"deliveryClient"];
+        NSArray *batchedEvents = [deliveryClient performSelector:@selector(batchedEvents) withObject:nil];
         //batchedEvents should be empty if all events has been sent successfully.
         XCTAssertEqual(0, [batchedEvents count], @"batchedEvents is not empty,events delivery may have failed!");
     }
 }
 @end
-
+#pragma clang diagnostic pop
 #endif

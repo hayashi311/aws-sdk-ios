@@ -24,6 +24,8 @@
 #import "AWSMobileAnalyticsEvent.h"
 #import "TestEventObserver.h"
 #import "AWSCategory.h"
+#import "AWSMobileAnalyticsERS.h"
+#import "AWSMockFileManager.h"
 
 #define TEST_APP_KEY @"SessionClientTestApplicationKey"
 #define TEST_UNIQ_ID @"SessionClientTestUniqueID"
@@ -47,11 +49,15 @@ static id<AWSMobileAnalyticsInternalEvent> mockResumeEvent = nil;
 {
     // Put setup code here. This method is called before the invocation of each test method in the class.
     if (![AWSServiceManager defaultServiceManager].defaultServiceConfiguration) {
-        AWSStaticCredentialsProvider *credentialsProvider = [[AWSStaticCredentialsProvider alloc] initWithCredentialsFilename:@"credentials"];
+        AWSStaticCredentialsProvider *credentialsProvider = [[AWSStaticCredentialsProvider alloc] initWithAccessKey:@"someAccessKey" secretKey:@"someSecretKey"];
         AWSServiceConfiguration *configuration = [[AWSServiceConfiguration alloc] initWithRegion:AWSRegionUSEast1
                                                                              credentialsProvider:credentialsProvider];
         [AWSServiceManager defaultServiceManager].defaultServiceConfiguration = configuration;
     }
+    
+    
+    
+    
 }
 
 - (void)tearDown
@@ -474,7 +480,7 @@ static id<AWSMobileAnalyticsInternalEvent> mockResumeEvent = nil;
 
     TestEventObserver2* newInterceptor = [[TestEventObserver2 alloc] initObserver];
     [AWSMobileAnalytics removeCachedInstances];
-    insights = [AWSMobileAnalytics mobileAnalyticsForAppId:[NSStringFromSelector(_cmd) stringByAppendingString:@"-2"]
+    [AWSMobileAnalytics mobileAnalyticsForAppId:[NSStringFromSelector(_cmd) stringByAppendingString:@"-2"]
                                              configuration:[AWSMobileAnalyticsConfiguration new]
                                            completionBlock:^(AWSMobileAnalytics *newInsights) {
                                                id<AWSMobileAnalyticsInternalEventClient> newEc = (id<AWSMobileAnalyticsInternalEventClient>) [newInsights eventClient];

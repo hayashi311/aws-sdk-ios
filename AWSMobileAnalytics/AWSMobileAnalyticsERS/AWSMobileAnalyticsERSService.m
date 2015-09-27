@@ -241,7 +241,7 @@ static AWSSynchronizedMutableDictionary *_serviceClients = nil;
 
 - (instancetype)initWithConfiguration:(AWSServiceConfiguration *)configuration {
     if (self = [super init]) {
-        _configuration = configuration;
+        _configuration = [configuration copy];
 
         _configuration.endpoint = [[AWSEndpoint alloc] initWithRegion:_configuration.regionType
                                                               service:AWSServiceMobileAnalytics
@@ -253,9 +253,8 @@ static AWSSynchronizedMutableDictionary *_serviceClients = nil;
         _configuration.baseURL = _configuration.endpoint.URL;
         _configuration.requestInterceptors = @[[AWSNetworkingRequestInterceptor new], signer];
         _configuration.retryHandler = [[AWSMobileAnalyticsERSRequestRetryHandler alloc] initWithMaximumRetryCount:_configuration.maxRetryCount];
-        _configuration.headers = @{@"Host" : _configuration.endpoint.hostName,
+        _configuration.headers = @{
                                    @"Content-Type" : @"application/x-amz-json-1.1",
-                                   @"Accept-Encoding" : @"",
                                    @"Content-Encoding": @"gzip"
                                    };
 
